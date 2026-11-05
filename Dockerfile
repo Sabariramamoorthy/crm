@@ -1,7 +1,8 @@
 # One image for the three processes (api, app, agent); compose picks the command.
 FROM oven/bun:1.4.0 AS bun
 
-FROM node:22-bookworm-slim AS build
+# eve (the agent runtime) requires Node.js 24 or newer.
+FROM node:24-bookworm-slim AS build
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates curl git openssl \
