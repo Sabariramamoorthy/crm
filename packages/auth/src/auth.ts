@@ -77,8 +77,12 @@ export const auth = betterAuth({
 		provider: "postgresql",
 	}),
 
+	// Accounts are created by scripts/create-password-user.ts, never by a
+	// public form, so the allow-list hook below still decides who exists.
 	emailAndPassword: {
-		enabled: false,
+		enabled: env.passwordSignIn,
+		disableSignUp: true,
+		minPasswordLength: 12,
 	},
 
 	socialProviders,

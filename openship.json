@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openship.io/openship.schema.json",
+  "framework": "nextjs",
+  "packageManager": "bun",
+  "composePath": "docker-compose.openship.yml",
+  "startCommand": "sh -c \"cd apps/app && exec ./node_modules/.bin/next start -H 0.0.0.0 -p 3060\"",
+  "port": 3060,
+  "runtime": "docker"
+}

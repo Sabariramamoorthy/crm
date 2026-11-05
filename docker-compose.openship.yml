@@ -1,0 +1,138 @@
+# Self-hosted deployment on Openship. The root docker-compose.yml stays the
+# local-development Postgres from the README.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: crm
+    volumes:
+      - crm-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["sh", "-c", "bun run --cwd packages/db db:deploy && bun packages/auth/scripts/create-password-user.ts && cd apps/api && exec bun dist/main.js"]
+    environment:
+      NODE_ENV: production
+      HOST: "0.0.0.0"
+      DATABASE_URL: ${DATABASE_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN}
+      AUTH_PASSWORD_SIGN_IN: "true"
+      API_URL: ${PUBLIC_URL}
+      APP_URL: ${PUBLIC_URL}
+      AGENT_URL: http://agent:2000
+      AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET}
+      CRON_SECRET: ${CRON_SECRET}
+      MCP_ENCRYPTION_KEY: ${MCP_ENCRYPTION_KEY}
+      CHAT_EVENT_ENCRYPTION_KEY: ${CHAT_EVENT_ENCRYPTION_KEY}
+      OPENAI_COMPATIBLE_NAME: ${OPENAI_COMPATIBLE_NAME:-tokenharbor}
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-https://tokenharbor.ai/v1}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY}
+      AGENT_MODEL_ID: ${AGENT_MODEL_ID:-deepseek-v4.1-flash:free}
+      AGENT_MODEL_CONTEXT_WINDOW: "${AGENT_MODEL_CONTEXT_WINDOW:-128000}"
+      CRM_TELEMETRY_DISABLED: "1"
+      PORT: "3001"
+      CRM_ADMIN_EMAIL: ${CRM_ADMIN_EMAIL}
+      CRM_ADMIN_PASSWORD: ${CRM_ADMIN_PASSWORD}
+      CRM_ADMIN_NAME: ${CRM_ADMIN_NAME}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["sh", "-c", "cd apps/agent && exec bun run start"]
+    environment:
+      NODE_ENV: production
+      HOST: "0.0.0.0"
+      DATABASE_URL: ${DATABASE_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN}
+      AUTH_PASSWORD_SIGN_IN: "true"
+      API_URL: ${PUBLIC_URL}
+      APP_URL: ${PUBLIC_URL}
+      AGENT_URL: http://agent:2000
+      AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET}
+      CRON_SECRET: ${CRON_SECRET}
+      MCP_ENCRYPTION_KEY: ${MCP_ENCRYPTION_KEY}
+      CHAT_EVENT_ENCRYPTION_KEY: ${CHAT_EVENT_ENCRYPTION_KEY}
+      OPENAI_COMPATIBLE_NAME: ${OPENAI_COMPATIBLE_NAME:-tokenharbor}
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-https://tokenharbor.ai/v1}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY}
+      AGENT_MODEL_ID: ${AGENT_MODEL_ID:-deepseek-v4.1-flash:free}
+      AGENT_MODEL_CONTEXT_WINDOW: "${AGENT_MODEL_CONTEXT_WINDOW:-128000}"
+      CRM_TELEMETRY_DISABLED: "1"
+      AGENT_PORT: "2000"
+      NITRO_HOST: "0.0.0.0"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:2000/eve/v1/info"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["sh", "-c", "cd apps/app && exec ./node_modules/.bin/next start -H 0.0.0.0 -p 3060"]
+    environment:
+      NODE_ENV: production
+      HOST: "0.0.0.0"
+      DATABASE_URL: ${DATABASE_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN}
+      AUTH_PASSWORD_SIGN_IN: "true"
+      API_URL: ${PUBLIC_URL}
+      APP_URL: ${PUBLIC_URL}
+      AGENT_URL: http://agent:2000
+      AGENT_BRIDGE_SECRET: ${AGENT_BRIDGE_SECRET}
+      CRON_SECRET: ${CRON_SECRET}
+      MCP_ENCRYPTION_KEY: ${MCP_ENCRYPTION_KEY}
+      CHAT_EVENT_ENCRYPTION_KEY: ${CHAT_EVENT_ENCRYPTION_KEY}
+      OPENAI_COMPATIBLE_NAME: ${OPENAI_COMPATIBLE_NAME:-tokenharbor}
+      OPENAI_COMPATIBLE_BASE_URL: ${OPENAI_COMPATIBLE_BASE_URL:-https://tokenharbor.ai/v1}
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY}
+      AGENT_MODEL_ID: ${AGENT_MODEL_ID:-deepseek-v4.1-flash:free}
+      AGENT_MODEL_CONTEXT_WINDOW: "${AGENT_MODEL_CONTEXT_WINDOW:-128000}"
+      CRM_TELEMETRY_DISABLED: "1"
+      PORT: "3060"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "${APP_PORT:-3060}:3060"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:3060/sign-in"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  crm-postgres:

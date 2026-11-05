@@ -4,6 +4,9 @@ import { onTelemetryProblem, syncVersion } from "@crm/telemetry";
 import { defineAgent, defineDynamic } from "eve";
 import { logCapabilities } from "./lib/capabilities";
 import { selectedModel } from "./lib/model";
+import { installOpenAICompatibleProvider } from "./lib/model-provider";
+
+installOpenAICompatibleProvider();
 
 void logCapabilities();
 

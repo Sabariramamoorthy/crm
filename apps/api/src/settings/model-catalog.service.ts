@@ -45,6 +45,31 @@ const gatewayCatalog = z
 	.object({ data: z.array(z.json()).catch([]) })
 	.catch({ data: [] });
 
+const DEFAULT_COMPATIBLE_CONTEXT_WINDOW = 128_000;
+
+const compatibleModel = z.object({
+	id: z.string(),
+	owned_by: z.string().catch(""),
+	context_window: z.number().optional().catch(undefined),
+	context_length: z.number().optional().catch(undefined),
+});
+
+function compatibleEndpoint(): {
+	url: string;
+	apiKey: string;
+	name: string;
+} | null {
+	const baseURL = process.env.OPENAI_COMPATIBLE_BASE_URL?.trim();
+	const apiKey = process.env.OPENAI_COMPATIBLE_API_KEY?.trim();
+	if (!baseURL || !apiKey) return null;
+
+	return {
+		url: `${baseURL.replace(/\/+$/, "")}/models`,
+		apiKey,
+		name: process.env.OPENAI_COMPATIBLE_NAME?.trim() || "OpenAI-compatible",
+	};
+}
+
 function usable(model: GatewayModel): boolean {
 	return model.type === "language" && model.tags.includes("tool-use");
 }
@@ -85,6 +110,9 @@ export class ModelCatalogService {
 	}
 
 	private async fetchCatalog(): Promise<CatalogModel[] | null> {
+		const compatible = compatibleEndpoint();
+		if (compatible) return this.fetchCompatibleCatalog(compatible);
+
 		try {
 			const response = await fetch(CATALOG_URL, {
 				headers: { accept: "application/json" },
@@ -122,6 +150,68 @@ export class ModelCatalogService {
 		} catch (error) {
 			this.logger.warn({
 				message: "Model catalog unavailable",
+				reason: error instanceof Error ? error.message : String(error),
+			});
+			return null;
+		}
+	}
+
+	private async fetchCompatibleCatalog(endpoint: {
+		url: string;
+		apiKey: string;
+		name: string;
+	}): Promise<CatalogModel[] | null> {
+		try {
+			const response = await fetch(endpoint.url, {
+				headers: {
+					accept: "application/json",
+					authorization: `Bearer ${endpoint.apiKey}`,
+				},
+				signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
+			});
+
+			if (!response.ok) {
+				this.logger.warn({
+					message: "Model catalog request failed",
+					provider: endpoint.name,
+					status: response.status,
+				});
+				return null;
+			}
+
+			const body = gatewayCatalog.parse(await response.json());
+
+			const models = body.data
+				.flatMap((entry) => {
+					const parsed = compatibleModel.safeParse(entry);
+					if (!parsed.success) return [];
+					const model = parsed.data;
+					return [
+						{
+							id: model.id,
+							name: model.id,
+							provider: model.owned_by || endpoint.name,
+							contextWindowTokens:
+								model.context_window ??
+								model.context_length ??
+								DEFAULT_COMPATIBLE_CONTEXT_WINDOW,
+							pricing: null,
+						} satisfies CatalogModel,
+					];
+				})
+				.sort((a, b) => a.name.localeCompare(b.name));
+
+			this.logger.log({
+				message: "Model catalog loaded",
+				provider: endpoint.name,
+				models: models.length,
+			});
+
+			return models;
+		} catch (error) {
+			this.logger.warn({
+				message: "Model catalog unavailable",
+				provider: endpoint.name,
 				reason: error instanceof Error ? error.message : String(error),
 			});
 			return null;

@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { AuthHeading, AuthShell } from "@/components/auth-shell";
 import { getSession } from "@/lib/session";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
+import { PasswordSignIn } from "./password-sign-in";
 import { SocialSignIn } from "./social-sign-in";
 import { type SsoProvider, SsoSignIn } from "./sso-sign-in";
 
@@ -70,8 +71,10 @@ async function SignIn({
 		redirect("/");
 	}
 
+	const password = process.env.AUTH_PASSWORD_SIGN_IN === "true";
+
 	const configured: MailboxProviderId[] = [];
-	if (options?.google ?? true) configured.push("google");
+	if (options?.google ?? !password) configured.push("google");
 	if (options?.microsoft ?? false) configured.push("microsoft");
 
 	const providers = options?.providers ?? [];
@@ -85,7 +88,7 @@ async function SignIn({
 				? configured
 				: [];
 
-	if (!showSso && social.length === 0) {
+	if (!password && !showSso && social.length === 0) {
 		return (
 			<>
 				<AuthHeading
@@ -110,6 +113,7 @@ async function SignIn({
 				description="Sign in with your account to continue."
 			/>
 
+			{password ? <PasswordSignIn /> : null}
 			{showSso ? <SsoSignIn providers={providers} /> : null}
 			{social.map((provider) => (
 				<SocialSignIn key={provider} provider={provider} />
